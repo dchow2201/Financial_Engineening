@@ -1,0 +1,150 @@
+---
+title: "Returns"
+author: "David Chow"
+date: "Monday, July 27, 2015"
+output: html_document
+---
+```{r,echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE,message=F)
+```
+
+Read the data set **Stock_FX_bond.csv** contains the volumes and *adjusted closing* (AC) prices of stocks and the *S&P 500* (columns B–W), *yields on bonds* (columns X–AD).
+
+###Compare GM and Ford returns    
+
+Do the GM and Ford returns seem positively correlated? Do you notice any outlying returns? If “yes,” do outlying GM returns seem to occur with outlying Ford returns?     
+
+```{r}
+Stock_FX_Bond <- read.csv("E:/Stat and Data Analysis for Financial Engineening/datasets/data sets/Stock_FX_Bond.csv", stringsAsFactors=FALSE)
+attach(Stock_FX_Bond)
+par(mfrow=c(1,2))
+plot(GM_AC,col="blue",type="l",ylab="GM")
+plot(F_AC,col="green",ylab="Ford")
+```
+
+   
+```{r}
+n=dim(Stock_FX_Bond)[1]
+GMReturn=GM_AC[2:n]/GM_AC[1:(n-1)]-1
+FReturn=F_AC[2:n]/F_AC[1:(n-1)]-1
+
+```
+
+
+
+```{r}
+cor=round(cor(GMReturn,FReturn),2)
+Return=data.frame(GM=GMReturn,Ford=FReturn)
+lin_mod=lm(Ford~GM,Return)
+GM.x=seq(range(GMReturn)[1],range(GMReturn)[2],length.out = 100)
+lin_pred=predict(lin_mod,newdata = list(GM=GM.x),se = T)
+par(mfrow=c(1,1))
+plot(GMReturn,FReturn,col="grey",main=paste("GM Return vs Ford Return: Correlation:",cor))
+lines(GM.x,lin_pred$fit,col="red",lwd=2)
+lines(GM.x,lin_pred$fit+2*lin_pred$se.fit,col="green",lwd=2,lty=2)
+lines(GM.x,lin_pred$fit-2*lin_pred$se.fit,col="green",lwd=2,lty=2)
+```
+
+###Simulations
+Suppose a hedge fund owns $1,000,000 of stock and used $50,000 of its own capital and $950,000 in borrowed money for the purchase. If the value of the stock falls below $950,000 at the end of any trading day, then the hedge fund must sell all the stock and repay the loan. This will wipe out its $50,000 investment. The hedge fund is said to be leveraged 20:1 since its position is 20 times the amount of its own capital invested.   
+
+The daily log returns on the stock have a mean of 0.05/year and a standard deviation of 0.23/year. These can be converted to rates per trading day by dividing by 253 and √253, respectively.    
+
+**What is the probability that the value of the stock will be below $950,000 at the close of at least one of the next 45 trading days?** 
+```{r}
+n=1e6   #number of iterations
+below=rep(0,n)
+set.seed(20)
+
+for (i in 1:n){
+  #calculate the log return
+  r=rnorm(45,mean = .05/253,sd = .23/sqrt(253))
+  #calculate the actual return
+  act_r=exp(r)
+  #get the cumlative return for each of the 45 days
+  cum_r=cumprod(act_r)
+  price=1e6*cum_r
+  below[i]=(sum(price<950000)>0)
+}
+mean(below)
+```
+
+Suppose the hedge fund will sell the stock for a profit of at least $100,000 if the value of the stock rises to at least $1,100,000 at the end of one of the first 100 trading days, sell it for a loss if the value falls below $950,000 at the end of one of the first 100 trading days, or sell after 100 trading days if the closing price has stayed between $950,000 and $1,100,000.  
+
+**What is the probability that the hedge fund will make a profit of at least $100,000?**
+
+```{r}
+n=1e6   #number of iterations
+over=rep(0,n)
+profit=rep(0,n)
+expected_return=rep(0,n)
+set.seed(20)
+for (i in 1:n){
+#calculate the log return
+  r=rnorm(100,mean = .05/253, sd = .23/sqrt(253))
+  #calculate the actual return
+  act_r=exp(r)
+  #get the cumlative return for each of the 45 days
+  cum_r=cumprod(act_r)
+  price=1e6*cum_r
+  if(sum(price>11e5)>0 & sum(price<95e4)>0){      
+    #if one of the price is above 1100000 and
+    #if one of the price is below 950000
+    #decide which happen first   
+    if(which(price>11e5)[1]<which(price<95e4)[1]){
+      #if the price went above 1100000 before it go below 950000
+      over[i]=1
+      profit[i]=price[price>11e5][1]-1e6
+      day=which(price>11e5)[1]
+      expected_return[i]=(profit[i]/50000)/day
+    }else{
+      #if the price went below 950000 before it go above 1100000
+      profit[i]=price[price<95e4][1]-1e6
+      day=which(price<95e4)[1]
+      expected_return[i]=(profit[i]/50000)/day
+    }
+  }else if(sum(price>11e5)>0){
+    #if the price never went below 950000 but went above 1100000 
+    over[i]=1
+    profit[i]=price[price>11e5][1]-1e6
+    day=which(price>11e5)[1]
+    expected_return[i]=(profit[i]/50000)/day
+  }else if(sum(price<95e4)>0){
+    #if the price went below 950000 but never went above 1100000
+    profit[i]=price[price<95e4][1]-1e6
+    day=which(price<95e4)[1]
+    expected_return[i]=(profit[i]/50000)/day
+  }else{
+    #price stay between 950000 to 1100000
+    profit[i]=price[100]-1e6
+    expected_return[i]=(profit[i]/50000)/100
+  }
+}
+mean(over)  
+```
+
+**What is the probability the hedge fund will suffer a loss?**    
+
+```{r}
+sum(profit<0)/length(profit)
+```
+
+**What is the expected profit from this trading strategy?**    
+
+```{r}
+mean(profit)
+hist(profit,col="yellow",prob=T)
+lines(density(profit),lwd=2,col="brown")
+```
+
+**What is the expected return?**   
+When answering this question, remember that only $50,000 was invested. Also, the units of return are time, e.g., one can express a return as a daily return or a weekly return. Therefore, one must keep track of how long the hedge fund holds its position before selling.    
+
+```{r}
+paste(round(mean(expected_return)*100,1),"% daily",
+      sep="")
+hist(expected_return,col="skyblue",prob=T)
+lines(density(expected_return),lwd=2,col="green")
+```
+
